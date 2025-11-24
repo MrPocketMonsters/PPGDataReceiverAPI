@@ -3,7 +3,7 @@ import datetime
 from pathlib import Path
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from data import ppg_dict_to_dataframe, store_ppg_dataframe_to_csv
+from data import ppg_dict_to_dataframe, store_ppg_dataframe_to_csv, load_top_n_csv_to_dataframe
 from typing import List
 
 
@@ -88,13 +88,14 @@ async def receive_data(request: Request, data: dict):
         return {"status": "error", "message": f"Error while parsing JSON: {e}"}
 
     print(f"Received data with {len(data)} samples.")
+
+    # Broadcast to connected WebSocket clients.
     await manager.broadcast(data.to_json(orient="split"))
-    # Save received dataframe to CSV with human-readable timestamp prefix.
+
+    # Save received dataframe to CSV.
     try:
-        timestamp_prefix = datetime \
-                .datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H-%M-%SZ')
-        filepath = store_ppg_dataframe_to_csv(str(DATA_DIR), timestamp_prefix, data)
-        print(f"Saved received PPG data to: {filepath}")
+        filepath = store_ppg_dataframe_to_csv(str(DATA_DIR), data)
+        print(f"Saved received PPG data to CSV: {filepath}")
     except Exception as e:
         print(f"Error saving PPG data to CSV: {e}")
 
