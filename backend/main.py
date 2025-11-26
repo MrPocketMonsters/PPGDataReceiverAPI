@@ -1,9 +1,9 @@
 import os
-import datetime
 from pathlib import Path
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from data import ppg_dict_to_dataframe, store_ppg_dataframe_to_csv, load_top_n_csv_to_dataframe
+from data import ppg_dict_to_dataframe, store_ppg_dataframe_to_csv
+from infer import Inferer
 from typing import List
 
 
@@ -35,7 +35,6 @@ class ConnectionManager:
                 self.disconnect(connection)
 
 
-
 app = FastAPI()
 frontend_port = os.environ.get('FRONTEND_PORT') or 8080
 FRONTEND_ORIGINS = [
@@ -51,6 +50,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 manager = ConnectionManager()
+
+model_path = os.environ.get('PPG_MODEL_PATH') or None
+inferer: Inferer = None
+if model_path is not None:
+    print(f"Using PPG model path from env: {model_path}")
+    inferer = Inferer(model_path)
 
 # Directory to store received PPG CSVs. Read from env `PPG_DATA_DIR`,
 # fallback to the repository `data` folder (project root /data).
@@ -88,6 +93,16 @@ async def receive_data(request: Request, data: dict):
         return {"status": "error", "message": f"Error while parsing JSON: {e}"}
 
     print(f"Received data with {len(data)} samples.")
+
+    if inferer is not None:
+        results = inferer.classify(data)
+        if results is not None:
+            print("Classification results:")
+            for channel in results:
+                label = results[channel]["label"]
+                confidence = results[channel]["confidence"]
+                print(f"  Channel {channel}: {label} (confidence: {confidence:.3f})")
+
 
     # Broadcast to connected WebSocket clients.
     await manager.broadcast(data.to_json(orient="split"))

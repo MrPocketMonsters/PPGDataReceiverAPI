@@ -47,6 +47,7 @@ Use cases:
 - CSV storage: each POSTed batch is persisted in `data/` with a UTC timestamp prefix.
 - Simple frontend to connect via WebSocket and plot data (vanilla JS).
 - Delta-format support: backend can accept either absolute samples or delta-encoded arrays.
+ - Optional ML inference: the backend can load a TensorFlow/Keras model (see `backend/infer.py`) from the environment variable `PPG_MODEL_PATH` and run a classification on each received batch. Classification results are printed to the backend logs when available.
 
 ---
 
@@ -58,6 +59,7 @@ The backend is a small FastAPI app which:
 - Accepts POST JSON payloads at `/` and converts them into a pandas DataFrame.
 - Broadcasts the JSON/frames to WebSocket clients connected to `/ws`.
 - Saves the DataFrame to the `data/` folder using a UTC timestamp prefix (`YYYY-MM-DDTHH-MM-SSZ_ppg.csv`).
+ - Optionally loads a TensorFlow model from the path in `PPG_MODEL_PATH` and classifies incoming batches using the `Inferer` wrapper in `backend/infer.py`.
 
 Simple diagram:
 
@@ -81,6 +83,8 @@ Key files and folders:
 | `frontend/index.html` | Minimal UI to connect and display PPG streams. |
 | `frontend/index.js`, `frontend/ws-client.js` | Frontend client and chart setup. |
 | `data/` | Where incoming CSVs are stored. Example files present. |
+| `backend/infer.py` | Optional inference wrapper that loads a TensorFlow/Keras model and classifies PPG DataFrames. |
+| `models/` | (gitignored) Optional model artifacts (e.g. `.keras`, `.h5`). Place trained models here for local testing. |
 | `requirements.txt` | Python dependencies for backend. |
 | `start.sh`, `start.bat` | Convenience scripts to launch the backend (shell / PowerShell). |
 
@@ -116,6 +120,45 @@ Or delta-format:
 ```
 
 The backend function `ppg_dict_to_dataframe` (see `backend/data.py`) handles conversion and delta decoding.
+
+---
+
+## 🔬 Signal processing & inference
+
+The project includes an optional inference path implemented in `backend/infer.py`. When a model path is provided via the environment variable `PPG_MODEL_PATH` the backend instantiates an `Inferer` which buffers incoming samples and runs a classification once enough data is available. Key details:
+
+- Input length & sampling:
+  - The inference code expects exactly 10 seconds of data sampled at 25 Hz (250 samples). If incoming posts are shorter the `Inferer` maintains an internal rolling buffer until 250 samples are accumulated.
+  - The implementation verifies sampling frequency by inspecting timestamp differences and will raise an error if the frequency deviates significantly from 25 Hz.
+
+- Preprocessing steps (applied per channel):
+  1. Band-pass filtering: a 4th-order Butterworth bandpass between 0.5 Hz and 8.0 Hz is applied to remove baseline wander and high-frequency noise. Filtering is applied with zero-phase filtering (`scipy.signal.filtfilt`) to avoid phase distortion.
+  2. Robust normalization: each channel is centered by its median and scaled by the median absolute deviation (MAD) to reduce the influence of outliers and amplitude differences across sensors.
+
+- Model input and output:
+  - Models must accept input shaped like `(1, 250, 1)` (batch size 1, 250 time steps, 1 channel per prediction). The `infer` wrapper prepares each channel as a separate input and runs the model per-channel.
+  - The model output is interpreted as a per-class probability vector. The inference code maps the highest-probability class index `0 -> 'SR'` (sinus rhythm) and `1 -> 'AF'` (atrial fibrillation) and records the maximum probability as `confidence`.
+
+- Results returned:
+  - For each channel the inference routine returns a small result dictionary containing:
+    - `original_signal`: the raw 250-sample signal (float32)
+    - `preprocessed_signal`: the filtered + normalized signal (float32)
+    - `label`: `'SR'` or `'AF'`
+    - `confidence`: float in `[0.0, 1.0]`
+
+- Practical notes:
+  - The `Inferer` class concatenates incoming batches and keeps the most recent 250 samples; it therefore works with streaming or batched POSTs as long as timestamps and sample rate are consistent.
+  - Models are loaded with `keras.models.load_model(..., compile=False)` so a saved Keras model file (`.keras`, `.h5`) is expected.
+  - Because TensorFlow and numeric packages are required, installing `tensorflow`, `numpy` and `scipy` is necessary when using inference (see `requirements.txt`).
+
+Example (logged output printed by `backend/main.py` when a classification occurs):
+
+```
+Classification results:
+  Channel RED: AF (confidence: 0.912)
+  Channel GREEN: SR (confidence: 0.987)
+```
+
 
 ---
 
@@ -183,7 +226,7 @@ The CSVs can be loaded with pandas or any spreadsheet tool for offline analysis.
 <a id="quickstart"></a>
 ## ⚡ Quickstart
 
-Recommended: use the bundled `prepare.sh` script to create a virtual environment, install dependencies, and prepare the project, then start the app from the created environment. Take in consideration that Python is required — Python 3.9+ is recommended.
+Recommended: use the bundled `prepare.sh` script to create a virtual environment, install dependencies, and prepare the project, then start the app from the created environment. Take in consideration that Python with 3.9 <= version <= 3.12 is required.
 
 Run on Unix-like systems (bash / WSL / Git Bash):
 
@@ -228,6 +271,8 @@ Or use the provided start script:
 ```bash
 ./start.sh        # bash
 ```
+
+Environment variables recognized by `start.sh` include `PPG_DATA_DIR` (directory for received CSVs) and `PPG_MODEL_PATH` (path to a TensorFlow/Keras model file). `start.sh` will canonicalize and export these paths and prints diagnostic lines on startup.
 
 4. Serve the frontend (optional)
 

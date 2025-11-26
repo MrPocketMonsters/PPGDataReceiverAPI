@@ -56,6 +56,23 @@ esac
 ABS_PPG_DATA_DIR="$(cd "$ABS_PPG_DATA_DIR" && pwd)"
 export PPG_DATA_DIR="$ABS_PPG_DATA_DIR"
 
+# Determine PPG model path and export it as an absolute path. If the
+# environment variable `PPG_MODEL_PATH` is provided and is absolute, use it.
+# If it is provided and relative, interpret it relative to the repository
+# root (`$SCRIPT_DIR`). If not provided, default to `$SCRIPT_DIR/models/model.keras`.
+if [ -z "${PPG_MODEL_PATH+x}" ] || [ -z "$PPG_MODEL_PATH" ]; then
+  _ppg_model="$SCRIPT_DIR/models/model.keras"
+else
+  _ppg_model="$PPG_MODEL_PATH"
+fi
+case "$_ppg_model" in
+  /*) ABS_PPG_MODEL_PATH="$_ppg_model" ;;
+  *) ABS_PPG_MODEL_PATH="$SCRIPT_DIR/${_ppg_model%/}" ;;
+esac
+# canonicalize (resolve symlinks) and export as a file path
+ABS_PPG_MODEL_PATH="$(cd "$(dirname "$ABS_PPG_MODEL_PATH")" && pwd)/$(basename "$ABS_PPG_MODEL_PATH")"
+export PPG_MODEL_PATH="$ABS_PPG_MODEL_PATH"
+
 echo "Starting services..."
 
 cd "$SCRIPT_DIR"
@@ -64,6 +81,8 @@ cd "$SCRIPT_DIR"
 echo "[debug] SCRIPT_DIR=$SCRIPT_DIR"
 echo "[debug] LOGDIR=$LOGDIR"
 echo "[debug] ABS_LOGDIR=$ABS_LOGDIR"
+echo "[debug] PPG_DATA_DIR=$PPG_DATA_DIR"
+echo "[debug] PPG_MODEL_PATH=$PPG_MODEL_PATH"
 echo "[debug] PWD=$(pwd)"
 if [ -d "$ABS_LOGDIR" ]; then
   echo "[debug] ABS_LOGDIR exists:" && ls -ld "$ABS_LOGDIR"
