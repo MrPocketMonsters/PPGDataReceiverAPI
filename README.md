@@ -214,11 +214,12 @@ The `frontend/` folder contains a minimal UI built with plain JavaScript to conn
 The frontend supports two visualization modes, switchable via tabs:
 
 - **Original View**: Real-time scrolling plots of the raw PPG signals.
+![Frontend original preview](screenshots/frontend_original.png)
 - **Processed View**: Static plots of the last 10-second window, showing the preprocessed signal and the inference result (Label + Confidence) in the chart title.
+![Frontend processed preview](screenshots/frontend_processed.png)
 
 You can adapt the frontend to your visualization stack (Chart.js, D3, etc.).
 
-![Frontend preview](screenshots/frontend.png)
 
 ---
 
