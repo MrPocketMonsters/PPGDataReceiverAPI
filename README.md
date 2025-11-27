@@ -18,6 +18,7 @@ A lightweight collector and viewer for Photoplethysmography (PPG) streams  built
 - [Architecture](#architecture)
 - [Repository layout](#repository-layout)
 - [Data format](#data-format)
+- [Signal processing & inference](#signal-processing-inference)
 - [API & WebSocket](#api-websocket)
 - [Frontend](#frontend)
 - [Storing & CSVs](#storing-csvs)
@@ -125,6 +126,7 @@ The backend function `ppg_dict_to_dataframe` (see `backend/data.py`) handles con
 
 ---
 
+<a id="signal-processing-inference"></a>
 ## 🔬 Signal processing & inference
 
 The project includes an optional inference path implemented in `backend/infer.py`. When a model path is provided via the environment variable `PPG_MODEL_PATH` the backend instantiates an `Inferer` which buffers incoming samples and runs a classification once enough data is available. Key details:
